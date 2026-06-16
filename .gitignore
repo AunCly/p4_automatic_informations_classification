@@ -1,0 +1,7 @@
+/Cours
+/Tests
+.idea
+.DS_Store
+!/data/raw
+.venv
+.ipynb_checkpoints
