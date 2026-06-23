@@ -1,26 +1,10 @@
 from sklearn.compose import ColumnTransformer
-from sklearn.metrics import make_scorer, recall_score, f1_score, precision_score, accuracy_score, classification_report
+from sklearn.metrics import make_scorer, recall_score, f1_score, confusion_matrix, roc_auc_score
 from sklearn.model_selection import cross_validate, train_test_split
-from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import RobustScaler, MinMaxScaler, OneHotEncoder
-
-
-# Fonction pour entrainer notre modèle et évaluer ses performances
-def train_model(pipeline, d):
-    # Entrainement du modèle
-    pipeline.fit(d['X_train'], d['y_train'])
-
-    # Prédictions sur le jeu de test
-    y_pred = pipeline.predict(d['X_test'])
-
-    # Check de la précision du modèle
-    accurracy = accuracy_score(d['y_test'], y_pred)
-    recall = recall_score(d['y_test'], y_pred)
-    f1 = f1_score(d['y_test'], y_pred)
-
-    print(f"Accuracy moyenne : {accurracy}")
-    print(f"Recall moyen : {recall}")
-    print(f"F1-Score moyen : {f1}")
+import seaborn as sns
+import matplotlib.pyplot as plt
+import pandas as pd
 
 def split_train_data(data, target) :
     labels = data[target]
@@ -40,40 +24,97 @@ def create_preprocessor():
     preprocessor = ColumnTransformer(
         transformers=[
             ('robust_scaler', RobustScaler(), ['revenu_mensuel']),
-            ('minmax_scaler', MinMaxScaler(), ['age', 'distance_domicile_travail']),
+            ('minmax_scaler', MinMaxScaler(), ['age']),
             ('encoder', OneHotEncoder(), ['statut_marital', 'departement', 'poste', 'domaine_etude']),
         ],
         remainder='passthrough'
     )
     return preprocessor
 
+def benchmark(pipeline, train_data, threshold = 0.5):
+    scoring = {
+        'recall': make_scorer(recall_score, zero_division=0),
+        'f1': make_scorer(f1_score, zero_division=0),
+    }
 
-# Compare les performances des différents modèles
-def benchmark(models, preprocessor, train_data):
-    for model in models:
-        print(f"Benchmarking model: {model['name']}")
+    cv_results = cross_validate(
+        pipeline,
+        train_data['X_train'],
+        train_data['y_train'],
+        cv=5,
+        scoring=scoring,
+    )
 
-        pipeline = Pipeline([
-            ('preprocessor', preprocessor),
-            ('model', model['model']),
-        ])
+    print('CrossValidation Results : ')
+    print(cv_results)
+    print(f"Recall moyen : {cv_results['test_recall'].mean()}")
+    print(f"F1-Score moyen : {cv_results['test_f1'].mean()}")
 
-        scoring = {
-            'accuracy': 'accuracy',
-            'precision': make_scorer(precision_score, zero_division=0),
-            'recall': make_scorer(recall_score, zero_division=0),
-            'f1': make_scorer(f1_score, zero_division=0)
-        }
+    pipeline.fit(train_data['X_train'], train_data['y_train'])
 
-        cv_results = cross_validate(
-            pipeline,
-            train_data['X_train'],
-            train_data['y_train'],
-            cv=5,
-            scoring=scoring,
-        )
+    y_pred = pipeline.predict(train_data['X_test'])
 
-        print(f"Accuracy moyenne : {cv_results['test_accuracy'].mean()}")
-        print(f"Recall moyen : {cv_results['test_recall'].mean()}")
-        print(f"F1-Score moyen : {cv_results['test_f1'].mean()}")
-        print('------------------')
+    # Check de la précision du modèle
+    recall = recall_score(train_data['y_test'], y_pred)
+    f1 = f1_score(train_data['y_test'], y_pred)
+
+    print(f'Training Résults : ')
+    print(f"Recall moyen : {recall}")
+    print(f"F1-Score moyen : {f1}")
+    print(confusion_matrix(train_data['y_test'], y_pred))
+
+def train(pipeline, train_data, threshold = 0.5):
+
+    pipeline.fit(train_data['X_train'], train_data['y_train'])
+
+    y_pred = pipeline.predict(train_data['X_test'])
+
+    # Check de la précision du modèle
+    recall = recall_score(train_data['y_test'], y_pred)
+    f1 = f1_score(train_data['y_test'], y_pred)
+
+    print(f'Training Résults : ')
+    print(f"Recall moyen : {recall}")
+    print(f"F1-Score moyen : {f1}")
+
+    print(confusion_matrix(train_data['y_test'], y_pred))
+
+    # Prédictions sur le set d'entraînement via le pipeline
+    y_pred_train = pipeline.predict(train_data['X_train'])
+
+    # Prédictions sur le set de test via le pipeline
+    y_pred_test = pipeline.predict(train_data['X_test'])
+    print(f"Train F1-Score: {f1_score(train_data['y_train'], y_pred_train)}")
+    print(f"Test F1-Score: {f1_score(train_data['y_test'], y_pred_test)}")
+
+    # Prédiction des probabilités
+    y_pred_proba = pipeline.predict_proba(train_data['X_test'])[:, 1]
+
+    # Calcul de l'AUC pour vérifier la performance du modele : proche de 0.5 = proche d'un jeté de piece
+    auc = roc_auc_score(train_data['y_test'], y_pred_proba)
+    print(f"L'AUC du modèle est : {auc}")
+
+# Affiche les features d'importance
+def show_importances(features, names):
+    df_importance = pd.DataFrame({
+        'Variable': names,
+        'Importance': features
+    })
+
+    df_importance = df_importance.sort_values(by='Importance', ascending=False)
+
+    plt.figure(figsize=(10, 6))
+    sns.barplot(
+        x='Importance',
+        y='Variable',
+        data=df_importance.head(10),
+        hue='Variable',
+        palette='viridis',
+        legend=False
+    )
+
+    plt.title("Top 10 des variables les plus importantes")
+    plt.xlabel("Importance")
+    plt.ylabel("Variables")
+    plt.tight_layout()
+    plt.show()
