@@ -19,7 +19,7 @@ class TechNovaFeatureEngineering(BaseEstimator, TransformerMixin):
         X_out['ratio_anciennete_total_experence'] = np.where(
             X_out['annee_experience_totale'] > 0,
             X_out['annees_dans_l_entreprise'] / X_out['annee_experience_totale'],
-            X_out['annees_dans_l_entreprise']
+            0
         )
 
         X_out['ratio_poste_actuel_anciennete'] = np.where(
@@ -76,15 +76,5 @@ class TechNovaFeatureEngineering(BaseEstimator, TransformerMixin):
                 return 4
 
         X_out['quartile_salaire_par_poste'] = X_out.apply(determiner_quartile, axis=1)
-
-        # Suppr des colonnes corrélées
-        corr_cols_to_remove = [
-            'note_evaluation_actuelle',
-            'note_evaluation_precedente',
-            'distance_domicile_travail',
-            'frequence_deplacement',
-        ]
-
-        X_out.drop(columns=[c for c in corr_cols_to_remove if c in X_out.columns], inplace=True)
 
         return X_out
